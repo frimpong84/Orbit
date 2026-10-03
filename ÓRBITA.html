@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ÓRBITA</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#0b0b1a;--fg:#f4f4ff;--p:#00e5ff;--o:#ff3d81;--r:#2a2a4a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+body{position:relative}
+canvas{display:block;width:100%;height:100%}
+#sc{position:absolute;top:calc(env(safe-area-inset-top,0px) + 16px);left:0;right:0;text-align:center;font-size:56px;font-weight:800;pointer-events:none}
+#ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:24px;background:rgba(11,11,26,.78)}
+#ui.h{display:none}
+h1{font-size:44px;letter-spacing:6px;margin:0;color:var(--p)}
+p{margin:0;max-width:300px;line-height:1.4}
+button{font:inherit;font-weight:700;font-size:20px;padding:14px 36px;border:0;border-radius:999px;background:var(--p);color:#001018;cursor:pointer}
+button.s{background:var(--o);color:#fff;font-size:16px;padding:10px 26px}
+#sh{display:none}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="sc">0</div>
+<div id="ui"><h1 id="t">ÓRBITA</h1><p id="m">Toca la pantalla para cambiar de carril y esquivar los bloques. ¿Cuánto aguantas?</p><button id="go">JUGAR</button><button id="sh" class="s">Retar a un amigo</button></div>
+<script>
+const cv=document.getElementById('c'),x=cv.getContext('2d'),$=id=>document.getElementById(id);
+let W,H,S,dpr;
+function rs(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;S=Math.min(W,H)}
+addEventListener('resize',rs);rs();
+let best=0;try{best=+localStorage.getItem('orb')||0}catch(e){}
+let st='idle',a=0,lane=0,lp=0,sp=1.8,obs=[],score=0,flash=0,nxt=2.5,last=0;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n);
+function reset(){a=0;lane=0;lp=0;sp=1.8;obs=[];score=0;flash=0;nxt=2.5;$('sc').textContent=0}
+function die(){
+  st='over';try{navigator.vibrate&&navigator.vibrate(120)}catch(e){}
+  if(score>best){best=score;try{localStorage.setItem('orb',best)}catch(e){}}
+  $('t').textContent=score+' puntos';
+  $('m').textContent='Récord: '+best+'. Seguro que puedes más.';
+  $('go').textContent='OTRA VEZ';$('sh').style.display='inline-block';$('ui').classList.remove('h');
+}
+function start(){reset();st='play';$('ui').classList.add('h')}
+$('go').onclick=start;
+$('sh').onclick=async()=>{
+  const t='Hice '+score+' en ÓRBITA 🌀 ¿Me superas?';
+  try{if(navigator.share){await navigator.share({title:'ÓRBITA',text:t,url:location.href})}
+  else{await navigator.clipboard.writeText(t+' '+location.href);$('sh').textContent='¡Copiado!'}}catch(e){}
+};
+function flip(){if(st==='play')lane^=1}
+addEventListener('pointerdown',e=>{if(!e.target.closest('button'))flip()});
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();st==='play'?flip():start()}});
+function step(dt){
+  a+=sp*dt;lp+=(lane-lp)*Math.min(1,dt*18);
+  while(nxt<a+4){const l=.45+Math.random()*.5;obs.push({a:nxt,l,ln:Math.random()<.5?0:1});nxt+=l+.8+sp*.35+Math.random()*.6}
+  for(const o of obs){
+    if(o.p)continue;
+    if(a+.06>o.a&&a-.06<o.a+o.l&&Math.abs(lp-o.ln)<.6){die();return}
+    if(a-.06>o.a+o.l){o.p=1;score++;flash=1;sp=Math.min(3.6,sp+.05);$('sc').textContent=score}
+  }
+  obs=obs.filter(o=>!(o.p&&a>o.a+o.l+2));
+}
+function draw(){
+  const R=[S*.28,S*.4],r=R[0]+(R[1]-R[0])*lp;
+  x.setTransform(dpr,0,0,dpr,0,0);x.fillStyle=css('--bg');x.fillRect(0,0,W,H);
+  x.translate(W/2,H/2);x.rotate(-Math.PI/2-a);x.lineCap='round';
+  x.strokeStyle=css('--r');x.lineWidth=3;
+  R.forEach(v=>{x.beginPath();x.arc(0,0,v,0,7);x.stroke()});
+  x.strokeStyle=css('--o');x.lineWidth=16;
+  for(const o of obs){x.beginPath();x.arc(0,0,R[o.ln],o.a,o.a+o.l);x.stroke()}
+  x.strokeStyle=css('--p');x.globalAlpha=.3;x.lineWidth=6;
+  x.beginPath();x.arc(0,0,r,a-.5,a);x.stroke();x.globalAlpha=1;
+  x.fillStyle=css('--p');x.beginPath();x.arc(Math.cos(a)*r,Math.sin(a)*r,10+flash*5,0,7);x.fill();
+  flash*=.9;
+}
+function loop(t){
+  const dt=Math.min(.05,(t-last)/1000||0);last=t;
+  if(st==='play')step(dt);else if(st==='idle')a+=dt*.8;
+  draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script></body></html>
